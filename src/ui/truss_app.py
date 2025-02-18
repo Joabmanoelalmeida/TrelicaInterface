@@ -92,8 +92,8 @@ class TrussApp:
         
         # Desenhar eixos no ponto (0,0) em coordenadas do canvas
         # Conversão: x = node.x * 50 + 300 e y = 350 - node.y * 50.
-        origin_x = 0 * 50 + 300  # 300
-        origin_y = 350 - 0 * 50  # 350
+        origin_x = 0 * 50 + 150  # 300
+        origin_y = 550 - 0 * 50  # 350
         arrow_size = 30
         # Eixo X (da esquerda para a direita)
         self.canvas.create_line(origin_x, origin_y, origin_x + arrow_size, origin_y,

@@ -4,6 +4,7 @@ import numpy as np
 
 from models.truss_node import TrussNode
 from models.truss_bar import TrussBar
+from scipy.linalg import eigh
 
 class TrussApp:
     def __init__(self, root):
@@ -82,7 +83,7 @@ class TrussApp:
         
         ttk.Button(input_frame, text="Resolver", command=self.solve).grid(row=16, column=0, columnspan=2)
         
-        footer_label = ttk.Label(input_frame, text="Autor: Joab Manoel Almeida Santos\n(UFAL-LCCV)")
+        footer_label = ttk.Label(input_frame, text="Autores:\nJOAB MANOEL ALMEIDA SANTOS\nMILTON MATEUS GUIMARÃES DOS SANTOS\n(UFAL-LCCV)")
         footer_label.grid(row=17, column=0, columnspan=2, sticky="we", pady=20)
         
         # Canvas
@@ -92,8 +93,8 @@ class TrussApp:
         
         # Desenhar eixos no ponto (0,0) em coordenadas do canvas
         # Conversão: x = node.x * 50 + 300 e y = 350 - node.y * 50.
-        origin_x = 0 * 50 + 150  # 300
-        origin_y = 550 - 0 * 50  # 350
+        origin_x = 150  # 300
+        origin_y = 550 
         arrow_size = 30
         # Eixo X (da esquerda para a direita)
         self.canvas.create_line(origin_x, origin_y, origin_x + arrow_size, origin_y,
@@ -135,8 +136,8 @@ class TrussApp:
             self.canvas.delete("all")
 
             # Redesenhar os eixos
-            origin_x = 300
-            origin_y = 350
+            origin_x = 150  # 300
+            origin_y = 550 
             arrow_size = 30
             self.canvas.create_line(origin_x, origin_y, origin_x + arrow_size, origin_y,
                                     arrow=tk.LAST, fill="green", width=2)
@@ -167,8 +168,8 @@ class TrussApp:
         self.selected_node = None
         self.canvas.delete("selection")
         for node in self.nodes:
-            x_node = node.x * 50 + 300
-            y_node = 350 - node.y * 50
+            x_node = node.x * 50 + 150
+            y_node = 550 - node.y * 50
             if abs(x_click - x_node) <= tol_canvas and abs(y_click - y_node) <= tol_canvas:
                 self.selected_node = node
                 # Destaque visual do nó selecionado
@@ -202,8 +203,8 @@ class TrussApp:
             self.canvas.delete(tag)
 
             # Converter coordenadas do nó para o canvas
-            x = self.nodes[node].x * 50 + 300
-            y = 350 - self.nodes[node].y * 50
+            x = self.nodes[node].x * 50 + 150
+            y = 550 - self.nodes[node].y * 50
 
             arrow_scale = 50  # Fator de escala para representação da força
 
@@ -234,8 +235,8 @@ class TrussApp:
             
     def draw_node(self, node):
         # Converter coordenadas para o canvas
-        x = node.x * 50 + 300
-        y = 350 - node.y * 50
+        x = node.x * 50 + 150
+        y = 550 - node.y * 50
         
         # Desenhar nó
         self.canvas.create_oval(x - 3, y - 3, x + 3, y + 3, fill="black")
@@ -260,10 +261,10 @@ class TrussApp:
             self.canvas.create_line(x + 20, y - 20 - 7, x + 20, y + 20 + 7, fill="black", width=2)
         
     def draw_bar(self, bar):
-        x1 = bar.start.x * 50 + 300
-        y1 = 350 - bar.start.y * 50
-        x2 = bar.end.x * 50 + 300
-        y2 = 350 - bar.end.y * 50
+        x1 = bar.start.x * 50 + 150
+        y1 = 550 - bar.start.y * 50
+        x2 = bar.end.x * 50 + 150
+        y2 = 550 - bar.end.y * 50
         self.canvas.create_line(x1, y1, x2, y2, fill="blue")
         self.canvas.create_text((x1 + x2) / 2, (y1 + y2) / 2, text=str(bar.id))
 
@@ -339,7 +340,10 @@ class TrussApp:
             bar.normal_force = bar.E * bar.A * strain
 
         self.show_results(U)
-        
+        # Realiza a análise modal após a solução estática
+        frequencies, modes = self.modal_analysis()
+        self.show_modal_results(frequencies, modes)
+
     def show_results(self, displacements):
         result_window = tk.Toplevel(self.root)
         result_window.title("Resultados")
@@ -353,3 +357,84 @@ class TrussApp:
         ttk.Label(result_window, text="\nEsforços Normais nas Barras:").pack()
         for bar in self.bars:
             ttk.Label(result_window, text=f"Barra {bar.id}: N={bar.normal_force:.2f} N").pack()
+
+    def modal_analysis(self):
+        n_nodes = len(self.nodes)
+        K = np.zeros((2 * n_nodes, 2 * n_nodes))
+        M = np.zeros((2 * n_nodes, 2 * n_nodes))
+        rho = 1000  # Densidade assumida
+        
+        for bar in self.bars:
+            dx = bar.end.x - bar.start.x
+            dy = bar.end.y - bar.start.y
+            L = bar.length
+            c = dx / L
+            s = dy / L
+            k = (bar.E * bar.A) / L
+            Ke = k * np.array([
+                [ c*c,   c*s, -c*c, -c*s],
+                [ c*s,   s*s, -c*s, -s*s],
+                [-c*c,  -c*s,  c*c,   c*s],
+                [-c*s,  -s*s,  c*s,   s*s]
+            ])
+            m_bar = rho * bar.A * L / 6
+            Me = m_bar * np.array([
+                [2, 0, 1, 0],
+                [0, 2, 0, 1],
+                [1, 0, 2, 0],
+                [0, 1, 0, 2]
+            ])
+            
+            start_idx = 2 * (bar.start.id - 1)
+            end_idx = 2 * (bar.end.id - 1)
+            indices = [start_idx, start_idx + 1, end_idx, end_idx + 1]
+            
+            for i in range(4):
+                for j in range(4):
+                    K[indices[i], indices[j]] += Ke[i, j]
+                    M[indices[i], indices[j]] += Me[i, j]
+        
+        # Aplica as condições de contorno
+        dof_remove = []
+        for i, node in enumerate(self.nodes):
+            if node.constraints[0]:
+                dof_remove.append(2 * i)
+            if node.constraints[1]:
+                dof_remove.append(2 * i + 1)
+        
+        K_reduced = np.delete(np.delete(K, dof_remove, axis=0), dof_remove, axis=1)
+        M_reduced = np.delete(np.delete(M, dof_remove, axis=0), dof_remove, axis=1)
+        
+        try:
+            eigenvals, eigenvecs = eigh(K_reduced, M_reduced)
+        except np.linalg.LinAlgError:
+            print("Erro na análise modal: sistema singular.")
+            return None, None
+
+        # Seleciona apenas os autovalores positivos
+        positive_idx = eigenvals > 1e-8
+        eigenvals = eigenvals[positive_idx]
+        eigenvecs = eigenvecs[:, positive_idx]
+        frequencies = np.sqrt(eigenvals)
+        modes = eigenvecs / np.linalg.norm(eigenvecs, axis=0)
+        
+        return frequencies, modes
+
+    def show_modal_results(self, frequencies, modes):
+        modal_window = tk.Toplevel(self.root)
+        modal_window.title("Análise Modal")
+        
+        ttk.Label(modal_window, text="Frequências Naturais (rad/s):").pack()
+        if frequencies is not None:
+            for i, freq in enumerate(frequencies):
+                ttk.Label(modal_window, text=f"Modo {i + 1}: {freq:.4f} rad/s").pack()
+        else:
+            ttk.Label(modal_window, text="Não foi possível calcular a análise modal.").pack()
+        
+        ttk.Label(modal_window, text="\nModos de Vibração:").pack()
+        if modes is not None:
+            modes_transposed = modes.T
+            for i, mode in enumerate(modes_transposed):
+                ttk.Label(modal_window, text=f"Modo {i + 1}: {mode}").pack()
+        else:
+            ttk.Label(modal_window, text="Modos de vibração não disponíveis.").pack()
